@@ -231,12 +231,38 @@ export default function App() {
                 </FormField>
 
                 <FormField label="Course" error={errors.course?.message} required>
-                  <input
-                    {...register("course", { required: "Course is required" })}
-                    type="text"
-                    placeholder="e.g., Computer Science"
+                  <select
+                    {...register("course", { required: "Course selection is required" })}
                     className="w-full px-4 py-3 bg-input-background rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                  />
+                  >
+                    <option value="">Select course</option>
+                    <option value="BA English">BA English</option>
+                    <option value="BA Hindi">BA Hindi</option>
+                    <option value="BA History">BA History</option>
+                    <option value="BA Music">BA Music</option>
+                    <option value="BA Psychology">BA Psychology</option>
+                    <option value="BA Sanskrit">BA Sanskrit</option>
+                    <option value="BAJMC">BAJMC</option>
+                    <option value="BBA">BBA</option>
+                    <option value="BCA">BCA</option>
+                    <option value="B.Ed">B.Ed</option>
+                    <option value="BRS">BRS</option>
+                    <option value="B.Sc IT">B.Sc IT</option>
+                    <option value="B.Sc Maths">B.Sc Maths</option>
+                    <option value="B.Sc Yogic Science">B.Sc Yogic Science</option>
+                    <option value="B.Voc">B.Voc</option>
+                    <option value="MA English">MA English</option>
+                    <option value="MA Hindi">MA Hindi</option>
+                    <option value="MA History">MA History</option>
+                    <option value="MA Music">MA Music</option>
+                    <option value="MA Psychology">MA Psychology</option>
+                    <option value="MA Yoga Therapy (MA YT)">MA Yoga Therapy (MA YT)</option>
+                    <option value="MAJMC">MAJMC</option>
+                    <option value="MBA">MBA</option>
+                    <option value="MCA">MCA</option>
+                    <option value="M.Sc HCYS">M.Sc HCYS</option>
+                    <option value="PhD">PhD</option>
+                  </select>
                 </FormField>
 
                 <FormField label="Semester" error={errors.semester?.message} required>
