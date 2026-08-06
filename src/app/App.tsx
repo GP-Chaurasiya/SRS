@@ -294,16 +294,18 @@ export default function App() {
                     <option value="Volleyball">Volleyball</option>
                     <option value="Badminton">Badminton</option>
                     <option value="Table Tennis">Table Tennis</option>
-                    <option value="Athletics">Athletics(100 m)</option>
-                    <option value="Athletics">Athletics(400 m)</option>
-                    <option value="Athletics">Athletics(relay Race)</option>
+                    <option value="Athletics (100 m)">Athletics (100 m)</option>
+                    <option value="Athletics (200 m)">Athletics (200 m)</option>
+                    <option value="Athletics (400 m)">Athletics (400 m)</option>
+                    <option value="Athletics (Relay Race)">Athletics (Relay Race)</option>
                     <option value="Kho-Kho">Kho-Kho</option>
                     <option value="Chess">Chess</option>
-                    <option value="Carrom">Carrom</option>
+                    <option value="7 Stones">7 Stones</option>
                     <option value="Tug Of War">Tug Of War</option>
                     <option value="Long Jump">Long Jump</option>
+                    <option value="High Jump">High Jump</option>
                     <option value="Javelin Throw">Javelin Throw</option>
-                    <option value="Discus throw">Discus throw</option>
+                    <option value="Discus Throw">Discus Throw</option>
                     <option value="Shot Put">Shot Put</option>
                   </select>
                 </FormField>
