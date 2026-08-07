@@ -26,7 +26,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
-  base: '/register/',
+  base: './',
   resolve: {
     alias: {
       // Alias @ to the src directory
