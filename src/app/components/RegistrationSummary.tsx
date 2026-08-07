@@ -1,120 +1,164 @@
 import React from "react";
+import { motion } from "motion/react";
 import { SportConfig, PlayerSlot } from "../types";
-import { Trophy, Shield, Users, ArrowRight, CheckCircle, Sparkles } from "lucide-react";
+import {
+  Trophy, Users, Shield, CheckCircle, Circle, Crown, Sparkles,
+} from "lucide-react";
 
 interface RegistrationSummaryProps {
   sport: SportConfig;
   teamName: string;
   slots: PlayerSlot[];
-  onSubmit: (e: React.FormEvent) => void;
-  isSubmitting: boolean;
+  completionPct: number;
 }
 
 export const RegistrationSummary: React.FC<RegistrationSummaryProps> = ({
   sport,
   teamName,
   slots,
-  onSubmit,
-  isSubmitting,
+  completionPct,
 }) => {
-  const isTeamOrDoubles = sport.type === "team" || sport.type === "doubles";
-  
-  // Count main players filled
-  const mainFilled = slots
-    .slice(0, sport.mainPlayers)
-    .filter((s) => s.scholarNo.trim().length > 0).length;
-
-  const isMainComplete = mainFilled >= sport.mainPlayers;
-  const subCount = sport.substitutes;
-
-  // Check mandatory substitute if team sport
-  let isSubComplete = true;
-  if (sport.type === "team" && sport.minSubstitutes > 0) {
-    const mandatorySubSlot = slots[sport.mainPlayers];
-    isSubComplete = Boolean(mandatorySubSlot && mandatorySubSlot.scholarNo.trim().length > 0);
-  }
-
-  const isValidToSubmit = isMainComplete && (isTeamOrDoubles ? teamName.trim().length > 0 : true) && isSubComplete;
+  const mainSlots = slots.filter((s) => !s.isSubstitute);
+  const subSlots = slots.filter((s) => s.isSubstitute);
+  const captainSlot = slots.find((s) => s.isCaptain);
+  const completedMain = mainSlots.filter((s) => s.isComplete).length;
+  const completedSubs = subSlots.filter((s) => s.isComplete).length;
+  const isTeam = sport.type === "team" || sport.type === "doubles";
 
   return (
-    <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-6 text-white shadow-2xl sticky top-24">
-      {/* Title Header */}
-      <div className="flex items-center justify-between pb-4 border-b border-white/10 mb-5">
+    <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-6 text-white shadow-2xl sticky top-24 space-y-5">
+      {/* Header */}
+      <div className="flex items-center justify-between pb-4 border-b border-white/10">
         <div className="flex items-center gap-2">
-          <Trophy className="w-6 h-6 text-amber-400" />
-          <h3 className="text-xl font-extrabold font-outfit text-white">Live Roster Summary</h3>
+          <Trophy className="w-5 h-5 text-amber-400" />
+          <h3 className="text-lg font-extrabold text-white">Live Roster</h3>
         </div>
-        <Sparkles className="w-5 h-5 text-amber-300 animate-pulse" />
+        <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
       </div>
 
-      {/* Details Stack */}
-      <div className="space-y-3 text-sm">
-        <div className="flex justify-between items-center py-1.5 border-b border-white/5">
-          <span className="text-slate-300 font-medium">Selected Sport</span>
-          <span className="font-bold text-amber-300 text-base">{sport.name}</span>
-        </div>
+      {/* Sport + Team */}
+      <div className="space-y-2.5 text-sm">
+        <SummaryRow label="Sport" value={`${sport.emoji} ${sport.name}`} highlight />
+        <SummaryRow label="Format" value={`${sport.type} · ${sport.category}`} />
+        {isTeam && (
+          <SummaryRow
+            label="Team Name"
+            value={teamName.trim() || "—"}
+            muted={!teamName.trim()}
+          />
+        )}
+        <SummaryRow
+          label="Captain"
+          value={captainSlot?.fullName || "Not selected"}
+          muted={!captainSlot?.fullName}
+          icon={<Crown className="w-3.5 h-3.5 text-amber-400" />}
+        />
+      </div>
 
-        <div className="flex justify-between items-center py-1.5 border-b border-white/5">
-          <span className="text-slate-300 font-medium">Category / Format</span>
-          <span className="font-bold uppercase tracking-wider text-xs px-2.5 py-1 rounded-md bg-white/10 text-white border border-white/10">
-            {sport.type} ({sport.category})
-          </span>
-        </div>
-
-        {isTeamOrDoubles && (
-          <div className="flex justify-between items-center py-1.5 border-b border-white/5">
-            <span className="text-slate-300 font-medium">Team Name</span>
-            <span className="font-bold text-white truncate max-w-[160px]">
-              {teamName.trim() || <span className="text-slate-400 italic">Enter Team Name</span>}
-            </span>
+      {/* Progress ring */}
+      <div className="flex items-center gap-4 py-3 px-4 bg-white/5 rounded-2xl border border-white/10">
+        <div className="relative w-14 h-14 flex-shrink-0">
+          <svg className="w-14 h-14 -rotate-90" viewBox="0 0 56 56">
+            <circle cx="28" cy="28" r="23" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="5" />
+            <motion.circle
+              cx="28" cy="28" r="23"
+              fill="none"
+              stroke="#fbbf24"
+              strokeWidth="5"
+              strokeLinecap="round"
+              strokeDasharray={`${2 * Math.PI * 23}`}
+              initial={{ strokeDashoffset: 2 * Math.PI * 23 }}
+              animate={{ strokeDashoffset: 2 * Math.PI * 23 * (1 - completionPct / 100) }}
+              transition={{ duration: 0.6, ease: "easeOut" }}
+            />
+          </svg>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="text-xs font-black text-amber-300">{completionPct}%</span>
           </div>
-        )}
-
-        <div className="flex justify-between items-center py-1.5 border-b border-white/5">
-          <span className="text-slate-300 font-medium">Main Roster Slots</span>
-          <span className="font-bold text-white">{sport.mainPlayers} Player(s)</span>
         </div>
-
-        <div className="flex justify-between items-center py-1.5 border-b border-white/5">
-          <span className="text-slate-300 font-medium">Substitutes</span>
-          <span className="font-bold text-white">
-            {subCount > 0 ? `${subCount} Slots (Sub 1 Req)` : "None"}
-          </span>
-        </div>
-
-        <div className="flex justify-between items-center py-2 bg-white/5 px-3 rounded-xl border border-white/10">
-          <span className="text-slate-200 font-semibold">Roster Filled</span>
-          <span
-            className={`font-black text-sm px-2.5 py-0.5 rounded-full ${
-              isMainComplete && isSubComplete
-                ? "bg-emerald-500/20 text-emerald-300 border border-emerald-400/40"
-                : "bg-amber-500/20 text-amber-300 border border-amber-400/40"
-            }`}
-          >
-            {mainFilled} / {sport.mainPlayers} Main
-          </span>
+        <div>
+          <p className="text-white font-bold text-sm">Form Progress</p>
+          <p className="text-slate-400 text-xs mt-0.5">
+            {completedMain}/{mainSlots.length} Players filled
+          </p>
+          {sport.type === "team" && (
+            <p className="text-slate-400 text-xs">
+              {completedSubs}/{subSlots.length} Substitutes
+            </p>
+          )}
         </div>
       </div>
 
-      {/* Action Submit Button */}
-      <button
-        onClick={onSubmit}
-        disabled={!isValidToSubmit || isSubmitting}
-        className={`w-full mt-6 py-4 px-6 rounded-2xl font-black text-base transition-all duration-300 flex items-center justify-center gap-2 shadow-xl ${
-          isValidToSubmit && !isSubmitting
-            ? "bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 text-slate-950 hover:shadow-amber-500/30 hover:scale-[1.02] active:scale-100"
-            : "bg-slate-700/60 text-slate-400 cursor-not-allowed border border-white/10"
-        }`}
-      >
-        {isSubmitting ? (
-          <span className="flex items-center gap-2">Processing Registration...</span>
-        ) : (
-          <>
-            <span>{isTeamOrDoubles ? "Create Team" : "Register Now"}</span>
-            <ArrowRight className="w-5 h-5" />
-          </>
-        )}
-      </button>
+      {/* Player checklist */}
+      {slots.length > 0 && (
+        <div className="space-y-1.5 max-h-[260px] overflow-y-auto pr-1 custom-scrollbar">
+          {mainSlots.map((slot) => (
+            <PlayerRow key={slot.index} slot={slot} />
+          ))}
+          {subSlots.length > 0 && (
+            <>
+              <div className="flex items-center gap-2 pt-2">
+                <Shield className="w-3.5 h-3.5 text-orange-400" />
+                <span className="text-[11px] font-bold text-orange-300 uppercase tracking-wider">
+                  Substitutes
+                </span>
+              </div>
+              {subSlots.map((slot) => (
+                <PlayerRow key={slot.index} slot={slot} />
+              ))}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 };
+
+function SummaryRow({
+  label,
+  value,
+  highlight,
+  muted,
+  icon,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+  muted?: boolean;
+  icon?: React.ReactNode;
+}) {
+  return (
+    <div className="flex justify-between items-center py-1 border-b border-white/5">
+      <span className="text-slate-300 text-xs font-medium">{label}</span>
+      <span
+        className={`text-xs font-bold flex items-center gap-1 truncate max-w-[160px] ${
+          highlight ? "text-amber-300" : muted ? "text-slate-500 italic" : "text-white"
+        }`}
+      >
+        {icon}
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function PlayerRow({ slot }: { slot: PlayerSlot }) {
+  return (
+    <div className="flex items-center gap-2 py-1">
+      {slot.isComplete ? (
+        <CheckCircle className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+      ) : (
+        <Circle className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
+      )}
+      <span
+        className={`text-xs truncate ${
+          slot.isComplete ? "text-emerald-300 font-semibold" : "text-slate-400"
+        }`}
+      >
+        {slot.role}
+        {slot.isCaptain && " 👑"}
+        {slot.fullName ? ` – ${slot.fullName}` : ""}
+      </span>
+    </div>
+  );
+}

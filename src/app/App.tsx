@@ -1,119 +1,279 @@
-import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import confetti from "canvas-confetti";
 import * as XLSX from "xlsx";
 import dsvvLogo from "../imports/DSVV_Logo_English.png";
-import csLogo from "../imports/Cs.PNG";
 import dssplLogoImage from "../imports/WhatsApp_Image_2026-04-23_at_3.27.56_PM-removebg-preview.png";
-import DSSPL_Logo from "../imports/DSVV_Logo_English.png";
 import { ImageWithFallback } from "./components/figma/ImageWithFallback";
+import { PlayerCard } from "./components/PlayerCard";
+import { SPORTS_CONFIG } from "./sportsConfig";
+import { PlayerSlot } from "./types";
+import {
+  Trophy, CheckCircle, Download, Users, ArrowLeft, ArrowRight, ArrowUp,
+  Printer, RotateCcw, Eye, Crown, Shield, User,
+} from "lucide-react";
 
-type FormData = {
-  name: string;
-  id: string;
-  course: string;
-  semester: string;
-  sport: string;
-  email: string;
-  phone: string;
-  mandal: string;
-};
+// ─── Build player slots for a selected sport ─────────────────────────
+function buildSlots(sportId: string): PlayerSlot[] {
+  const sport = SPORTS_CONFIG[sportId];
+  if (!sport) return [];
+  const slots: PlayerSlot[] = [];
 
-type Registration = FormData & {
-  timestamp: string;
-};
+  // Main players
+  for (let i = 0; i < sport.mainPlayers; i++) {
+    slots.push({
+      index: i,
+      role: sport.mainPlayers === 1 ? "Player 1 (Primary)" : `Player ${i + 1}`,
+      isCaptain: i === 0 && sport.type !== "individual",
+      isSubstitute: false,
+      isOptional: false,
+      fullName: "", scholarNo: "", course: "", semester: "",
+      phone: "", email: "", mandal: "", gender: "",
+      errors: {}, isComplete: false, isCollapsed: i !== 0,
+    });
+  }
+
+  // Substitute slots (only for team sports)
+  if (sport.type === "team") {
+    for (let j = 0; j < sport.substitutes; j++) {
+      slots.push({
+        index: sport.mainPlayers + j,
+        role: `Substitute ${j + 1}`,
+        isCaptain: false,
+        isSubstitute: true,
+        isOptional: j > 0, // Sub 1 is mandatory, others optional
+        fullName: "", scholarNo: "", course: "", semester: "",
+        phone: "", email: "", mandal: "", gender: "",
+        errors: {}, isComplete: false, isCollapsed: true,
+      });
+    }
+  }
+
+  return slots;
+}
+
+// ─── Validate slot ───────────────────────────────────────────────────
+function validateSlot(
+  slot: PlayerSlot,
+  allSlots: PlayerSlot[]
+): Record<string, string> {
+  const errors: Record<string, string> = {};
+  if (slot.isOptional && !slot.fullName && !slot.scholarNo) return {};
+
+  if (!slot.fullName?.trim()) errors.fullName = "Full name is required";
+  if (!slot.scholarNo?.trim()) errors.scholarNo = "Scholar ID is required";
+  if (!slot.course) errors.course = "Course is required";
+  if (!slot.semester) errors.semester = "Semester is required";
+  if (!slot.phone?.trim()) errors.phone = "Phone number is required";
+  if (!slot.email?.trim()) errors.email = "Email is required";
+  if (!slot.mandal) errors.mandal = "Mandal is required";
+  if (!slot.gender) errors.gender = "Gender is required";
+
+  if (slot.phone && !/^[6-9]\d{9}$/.test(slot.phone.trim())) {
+    errors.phone = "Enter valid 10-digit phone number";
+  }
+
+  if (slot.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(slot.email.trim())) {
+    errors.email = "Invalid email format";
+  }
+
+  // Duplicate checks across team
+  const others = allSlots.filter((s) => s.index !== slot.index);
+  if (slot.scholarNo && others.some((s) => s.scholarNo === slot.scholarNo)) {
+    errors.scholarNo = "Duplicate Scholar ID in team";
+  }
+  if (slot.phone && others.some((s) => s.phone === slot.phone)) {
+    errors.phone = "Duplicate phone number in team";
+  }
+
+  return errors;
+}
+
+function checkComplete(slot: PlayerSlot, allSlots: PlayerSlot[]): boolean {
+  if (slot.isOptional && !slot.fullName && !slot.scholarNo) return true;
+  const errs = validateSlot(slot, allSlots);
+  return Object.keys(errs).length === 0 && Boolean(
+    slot.fullName && slot.scholarNo && slot.course && slot.semester &&
+    slot.phone && slot.email && slot.mandal && slot.gender
+  );
+}
+
+function generateTeamId(sportId: string): string {
+  const sport = SPORTS_CONFIG[sportId];
+  const code = sport?.name.replace(/[^A-Z]/gi, "").slice(0, 3).toUpperCase() || "SPT";
+  const num = String(Math.floor(Math.random() * 90000) + 10000);
+  return `DSSPL-2026-${code}-${num}`;
+}
 
 export default function App() {
-  const [registrations, setRegistrations] = useState<Registration[]>([]);
-  const [showSuccess, setShowSuccess] = useState(false);
+  const [selectedSport, setSelectedSport] = useState("");
+  const [slots, setSlots] = useState<PlayerSlot[]>([]);
+  const [viewMode, setViewMode] = useState<"form" | "preview" | "success">("form");
+  const [submittedTeamId, setSubmittedTeamId] = useState("");
+  const [submittedTime, setSubmittedTime] = useState("");
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-    reset,
-  } = useForm<FormData>();
+  const sport = selectedSport ? SPORTS_CONFIG[selectedSport] : null;
+  const isTeamOrDoubles = sport?.type === "team" || sport?.type === "doubles";
 
- const onSubmit = (data: FormData) => {
+  // ── Handle Sport Select in Dropdown ────────────────────────────────
+  const handleSportChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const sportId = e.target.value;
+    setSelectedSport(sportId);
+    setSlots(buildSlots(sportId));
+  };
+
+  // ── Field Change Handler ───────────────────────────────────────────
+  const handleFieldChange = useCallback(
+    (index: number, field: keyof PlayerSlot, value: string | boolean) => {
+      setSlots((prev) => {
+        const updated = prev.map((s) =>
+          s.index === index ? { ...s, [field]: value } : s
+        );
+        const slot = updated[index];
+        const errors = validateSlot(slot, updated);
+        const isComplete = checkComplete(slot, updated);
+        updated[index] = { ...slot, errors, isComplete };
+        return updated;
+      });
+    },
+    []
+  );
+
+  // ── Captain Toggle ──────────────────────────────────────────────────
+  const handleToggleCaptain = useCallback((index: number) => {
+    setSlots((prev) =>
+      prev.map((s) => ({
+        ...s,
+        isCaptain: s.index === index ? !s.isCaptain : false,
+      }))
+    );
+  }, []);
+
+  // ── Collapse Toggle ─────────────────────────────────────────────────
+  const handleToggleCollapse = useCallback((index: number) => {
+    setSlots((prev) =>
+      prev.map((s) =>
+        s.index === index ? { ...s, isCollapsed: !s.isCollapsed } : s
+      )
+    );
+  }, []);
+
+  // ── Validation check ────────────────────────────────────────────────
+  const isFormValid = useMemo(() => {
+    if (!sport || slots.length === 0) return false;
+
+    const mainSlots = slots.filter((s) => !s.isSubstitute);
+    const requiredSubSlots = slots.filter((s) => s.isSubstitute && !s.isOptional);
+
+    const mainValid = mainSlots.every((s) => checkComplete(s, slots));
+    const subsValid = requiredSubSlots.every((s) => checkComplete(s, slots));
+
+    return mainValid && subsValid;
+  }, [sport, slots]);
+
+  // ── Go to Preview ───────────────────────────────────────────────────
+  const handleGoToPreview = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isFormValid || !sport) return;
+    setViewMode("preview");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // ── Final Submit ────────────────────────────────────────────────────
+  const handleFinalSubmit = () => {
+    if (!sport) return;
+    const teamId = generateTeamId(selectedSport);
     const timestamp = new Date().toLocaleString();
 
-    // Update UI immediately — no waiting for network
-    setRegistrations((prev) => [{ ...data, timestamp }, ...prev]);
-    setShowSuccess(true);
-    confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-    setTimeout(() => setShowSuccess(false), 3000);
-    reset();
+    setSubmittedTeamId(teamId);
+    setSubmittedTime(timestamp);
+    setViewMode("success");
+    confetti({ particleCount: 150, spread: 90, origin: { y: 0.5 } });
 
-    // Fire-and-forget to Google Sheets in the background
+    // Background Google Sheets Sync
     fetch(
       "https://script.google.com/macros/s/AKfycbxPZZqbNlzCC2toxV2I39V3FYumEVStd5Cybgx35zr0RtBC-JChZVRts-RvQT-AKwYp/exec",
       {
         method: "POST",
         mode: "no-cors",
-        body: JSON.stringify({ registrations: [{ ...data, timestamp }] }),
+        body: JSON.stringify({
+          teamId,
+          sport: sport.name,
+          timestamp,
+          players: slots.map((s) => ({
+            role: s.role,
+            fullName: s.fullName,
+            scholarNo: s.scholarNo,
+            course: s.course,
+            semester: s.semester,
+            phone: s.phone,
+            email: s.email,
+            mandal: s.mandal,
+            gender: s.gender,
+            isCaptain: s.isCaptain,
+          })),
+        }),
       }
-    ).catch((err) => console.error("Background sync failed:", err));
+    ).catch((err) => console.error("Background sync error:", err));
   };
-  const exportToExcel = () => {
-    if (registrations.length === 0) {
-      alert("No registrations to export!");
-      return;
-    }
 
-    const worksheet = XLSX.utils.json_to_sheet(
-      registrations.map((reg, index) => ({
-        "S.No": registrations.length - index,
-        "Name": reg.name,
-        "Student ID": reg.id,
-        "Course": reg.course,
-        "Semester": reg.semester,
-        "Sport": reg.sport,
-        "Mandal": reg.mandal,
-        "Email": reg.email,
-        "Phone": reg.phone,
-        "Transaction ID": reg.transactionId,
-        "Registration Time": reg.timestamp,
-      }))
-    );
+  // ── Export Excel ────────────────────────────────────────────────────
+  const handleDownloadExcel = () => {
+    if (!sport || slots.length === 0) return;
+    const rows = slots
+      .filter((s) => s.fullName)
+      .map((s) => ({
+        "Registration / Team ID": submittedTeamId,
+        "Sport": sport.name,
+        "Role": s.role,
+        "Full Name": s.fullName,
+        "Scholar No": s.scholarNo,
+        "Course": s.course,
+        "Semester": s.semester,
+        "Phone": s.phone,
+        "Email": s.email,
+        "Mandal": s.mandal,
+        "Gender": s.gender,
+        "Captain": s.isCaptain ? "Yes" : "No",
+        "Registered Time": submittedTime,
+      }));
 
+    const worksheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Registrations");
-
-    XLSX.writeFile(workbook, `DSSPL_Registrations_${new Date().toISOString().split('T')[0]}.xlsx`);
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Registration");
+    XLSX.writeFile(workbook, `DSSPL_Registration_${submittedTeamId}.xlsx`);
   };
 
-  const deleteRegistration = (index: number) => {
-    setRegistrations((prev) => prev.filter((_, i) => i !== index));
+  // ── Reset ───────────────────────────────────────────────────────────
+  const handleRegisterAnother = () => {
+    setSelectedSport("");
+    setSlots([]);
+    setSubmittedTeamId("");
+    setViewMode("form");
   };
+
+  const captain = slots.find((s) => s.isCaptain) || slots[0];
+  const mainPlayers = slots.filter((s) => !s.isSubstitute);
+  const subPlayers = slots.filter((s) => s.isSubstitute && s.fullName);
 
   return (
     <div className="min-h-svh bg-gradient-to-br from-blue-900 via-blue-800 to-indigo-900 relative overflow-hidden">
-      {/* Navbar */}
-      <nav className="bg-white shadow-lg sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4">
+      {/* Navbar Header */}
+      <nav className="bg-white shadow-md sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-6 py-2 md:py-2.5">
           <div className="flex items-center justify-between">
-            <motion.div
-              initial={{ x: -20, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              className="flex items-center"
-            >
-              <ImageWithFallback src={dsvvLogo} alt="DSVV Logo" className="h-12 md:h-16 object-contain" />
+            <motion.div initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="flex items-center">
+              <ImageWithFallback src={dsvvLogo} alt="DSVV Logo" className="h-10 md:h-12 object-contain" />
             </motion.div>
-
-            <motion.div
-              initial={{ x: 20, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              className="flex items-center"
-            >
-              <ImageWithFallback src={csLogo} alt="CS Department" className="h-10 md:h-14 object-contain" />
+            <motion.div initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="flex items-center">
+              <ImageWithFallback src={dssplLogoImage} alt="DSSPL Logo" className="h-14 md:h-16 object-contain" />
             </motion.div>
           </div>
         </div>
       </nav>
 
-      {/* Background Pattern */}
-      <div className="absolute inset-0 opacity-10">
+      {/* Decorative background grid pattern */}
+      <div className="absolute inset-0 opacity-10 pointer-events-none">
         <div className="absolute top-10 left-10 w-32 h-32 border-4 border-white rounded-full"></div>
         <div className="absolute top-40 right-20 w-24 h-24 border-4 border-white rounded-full"></div>
         <div className="absolute bottom-20 left-1/4 w-40 h-40 border-4 border-white rounded-full"></div>
@@ -122,411 +282,280 @@ export default function App() {
         <div className="absolute top-0 left-2/4 w-1 h-full bg-white/20"></div>
         <div className="absolute top-0 left-3/4 w-1 h-full bg-white/20"></div>
         <div className="absolute top-1/2 left-0 w-full h-1 bg-white/20"></div>
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-64 h-64 border-4 border-white rounded-full"></div>
       </div>
 
-      <div className="max-w-7xl mx-auto py-6 md:py-8 px-4 md:px-6 relative z-10">
-        <div className="text-center mb-8 md:mb-12">
-          <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ delay: 0.1, type: "spring", stiffness: 200 }}
-            className="inline-block mb-4 md:mb-6"
-          >
-            <div className="bg-white/20 backdrop-blur-sm rounded-full p-2 border-4 border-white/30 overflow-hidden w-24 h-24 md:w-32 md:h-32 flex items-center justify-center">
-              <ImageWithFallback src={dssplLogoImage} alt="DSSPL Logo" className="w-full h-full object-cover rounded-full" />
-            </div>
-          </motion.div>
-
+      {/* Page Content Container */}
+      <div className="max-w-4xl mx-auto py-4 md:py-6 px-4 md:px-6 relative z-10">
+        {/* Title */}
+        <div className="text-center mb-6">
           <motion.h1
             initial={{ y: -20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.2 }}
-            className="text-white mb-2 md:mb-3 drop-shadow-lg text-3xl md:text-4xl font-bold text-balance"
+            className="text-white mb-1.5 drop-shadow-lg text-xl md:text-3xl font-bold text-balance"
           >
-            DSSPL Registration 2026
+            DEV SANSKRITI SPORTS PREMIER LEAGUE
           </motion.h1>
           <motion.p
             initial={{ y: -20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.3 }}
-            className="text-blue-100 text-base md:text-lg drop-shadow text-balance"
+            className="text-blue-100 text-sm md:text-base drop-shadow text-balance"
           >
-            Join your team and compete at the highest level
+            Team Registration Portal · Season 2026
           </motion.p>
-
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.4 }}
-            className="flex items-center justify-center gap-4 md:gap-6 mt-6 md:mt-8"
-          >
-            <SportIcon>
-              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="none"/>
-                <path d="M12 2a10 10 0 0 0 0 20" stroke="currentColor" strokeWidth="2" fill="none"/>
-                <path d="M2 12h20" stroke="currentColor" strokeWidth="2"/>
-              </svg>
-            </SportIcon>
-            <SportIcon>
-              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
-              </svg>
-            </SportIcon>
-            <SportIcon>
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </SportIcon>
-            <SportIcon>
-              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-              </svg>
-            </SportIcon>
-          </motion.div>
         </div>
 
-        <div className="grid lg:grid-cols-2 gap-6 md:gap-8">
-          {/* Registration Form */}
-          <motion.form
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.6 }}
-            onSubmit={handleSubmit(onSubmit)}
-            className="bg-white rounded-2xl p-5 md:p-8 shadow-2xl h-fit lg:sticky lg:top-24 border-t-4 border-blue-600 relative overflow-hidden"
-          >
-            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full -mr-16 -mt-16"></div>
-            <div className="absolute bottom-0 left-0 w-24 h-24 bg-indigo-500/5 rounded-full -ml-12 -mb-12"></div>
-
-            <div className="relative z-10">
-              <div className="flex items-center gap-3 mb-5 md:mb-6 pb-5 md:pb-6 border-b-2 border-blue-100">
-                <div className="bg-blue-600 text-white rounded-full p-2 md:p-3">
-                  <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
+        <AnimatePresence mode="wait">
+          {/* ── MODE 1: FORM FILLING ── */}
+          {viewMode === "form" && (
+            <motion.form
+              key="form-view"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              onSubmit={handleGoToPreview}
+              className="bg-white rounded-2xl p-5 md:p-8 shadow-2xl border-t-4 border-blue-600 relative overflow-hidden"
+            >
+              {/* Form Title */}
+              <div className="flex items-center gap-3 mb-6 pb-4 border-b border-slate-100">
+                <div className="bg-blue-600 text-white rounded-full p-2.5">
+                  <Trophy className="w-6 h-6" />
                 </div>
                 <div>
-                  <h2 className="text-lg md:text-xl font-semibold text-foreground">Registration Form</h2>
-                  <p className="text-xs md:text-sm text-muted-foreground">Fill in your details to join</p>
+                  <h2 className="text-xl font-bold text-slate-800">Registration Form</h2>
+                  <p className="text-xs text-slate-500">Fill in details to proceed to preview</p>
                 </div>
               </div>
 
-              <div className="grid sm:grid-cols-2 gap-4 md:gap-6 mb-6 md:mb-8">
-                <FormField label="Full Name" error={errors.name?.message} required>
-                  <input
-                    {...register("name", { required: "Name is required" })}
-                    type="text"
-                    placeholder="Enter your full name"
-                    className="w-full px-4 py-3 bg-input-background rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                  />
-                </FormField>
-
-                <FormField label="Scholar ID" error={errors.id?.message} required>
-                  <input
-                    {...register("id", { required: "Scholar ID is required" })}
-                    type="text"
-                    placeholder="e.g., 2424001"
-                    className="w-full px-4 py-3 bg-input-background rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                  />
-                </FormField>
-
-                <FormField label="Course" error={errors.course?.message} required>
-                  <select
-                    {...register("course", { required: "Course selection is required" })}
-                    className="w-full px-4 py-3 bg-input-background rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                  >
-                    <option value="">Select course</option>
-                    <option value="BA English">BA English</option>
-                    <option value="BA Hindi">BA Hindi</option>
-                    <option value="BA History">BA History</option>
-                    <option value="BA Music">BA Music</option>
-                    <option value="BA Psychology">BA Psychology</option>
-                    <option value="BA Sanskrit">BA Sanskrit</option>
-                    <option value="BAJMC">BAJMC</option>
-                    <option value="BBA">BBA</option>
-                    <option value="BCA">BCA</option>
-                    <option value="B.Ed">B.Ed</option>
-                    <option value="BRS">BRS</option>
-                    <option value="B.Sc IT">B.Sc IT</option>
-                    <option value="B.Sc Maths">B.Sc Maths</option>
-                    <option value="B.Sc Yogic Science">B.Sc Yogic Science</option>
-                    <option value="B.Voc">B.Voc</option>
-                    <option value="MA English">MA English</option>
-                    <option value="MA Hindi">MA Hindi</option>
-                    <option value="MA History">MA History</option>
-                    <option value="MA Music">MA Music</option>
-                    <option value="MA Psychology">MA Psychology</option>
-                    <option value="MA Yoga Therapy (MA YT)">MA Yoga Therapy (MA YT)</option>
-                    <option value="MAJMC">MAJMC</option>
-                    <option value="MBA">MBA</option>
-                    <option value="MCA">MCA</option>
-                    <option value="M.Sc HCYS">M.Sc HCYS</option>
-                    <option value="PhD">PhD</option>
-                  </select>
-                </FormField>
-
-                <FormField label="Semester" error={errors.semester?.message} required>
-                  <select
-                    {...register("semester", { required: "Semester is required" })}
-                    className="w-full px-4 py-3 bg-input-background rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                  >
-                    <option value="">Select semester</option>
-                    <option value="1">Semester 1</option>
-                    <option value="2">Semester 2</option>
-                    <option value="3">Semester 3</option>
-                    <option value="4">Semester 4</option>
-                    <option value="5">Semester 5</option>
-                    <option value="6">Semester 6</option>
-                    <option value="7">Semester 7</option>
-                    <option value="8">Semester 8</option>
-                  </select>
-                </FormField>
-
-                <FormField label="Sport" error={errors.sport?.message} required>
-                  <select
-                    {...register("sport", { required: "Sport selection is required" })}
-                    className="w-full px-4 py-3 bg-input-background rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                  >
-                    <option value="">Select sport</option>
-                    <option value="Basketball">Basketball</option>
-                    <option value="Football">Football</option>
-                    <option value="Cricket">Cricket</option>
-                    <option value="Volleyball">Volleyball</option>
-                    <option value="Badminton">Badminton</option>
-                    <option value="Table Tennis">Table Tennis</option>
-                    <option value="Athletics (100 m)">Athletics (100 m)</option>
-                    <option value="Athletics (200 m)">Athletics (200 m)</option>
-                    <option value="Athletics (400 m)">Athletics (400 m)</option>
-                    <option value="Athletics (Relay Race)">Athletics (Relay Race)</option>
-                    <option value="Kho-Kho">Kho-Kho</option>
-                    <option value="Chess">Chess</option>
-                    <option value="7 Stones">7 Stones</option>
-                    <option value="Tug Of War">Tug Of War</option>
-                    <option value="Long Jump">Long Jump</option>
-                    <option value="High Jump">High Jump</option>
-                    <option value="Javelin Throw">Javelin Throw</option>
-                    <option value="Discus Throw">Discus Throw</option>
-                    <option value="Shot Put">Shot Put</option>
-                  </select>
-                </FormField>
-
-                <FormField label="Email" error={errors.email?.message} required>
-                  <input
-                    {...register("email", {
-                      required: "Email is required",
-                      pattern: {
-                        value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                        message: "Invalid email address",
-                      },
-                    })}
-                    type="email"
-                    placeholder="your.email@example.com"
-                    className="w-full px-4 py-3 bg-input-background rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                  />
-                </FormField>
-
-                <FormField label="Phone Number" error={errors.phone?.message} required>
-                  <input
-                    {...register("phone", {
-                      required: "Phone number is required",
-                      pattern: {
-                        value: /^[0-9]{10}$/,
-                        message: "Please enter a valid 10-digit phone number",
-                      },
-                    })}
-                    type="tel"
-                    placeholder="e.g., 9876543210"
-                    className="w-full px-4 py-3 bg-input-background rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                  />
-                </FormField>
-
-                <FormField label="Mandal" error={errors.mandal?.message} required>
-                  <select
-                    {...register("mandal", { required: "Mandal is required" })}
-                    className="w-full px-4 py-3 bg-input-background rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                  >
-                    <option value="">Select Mandal</option>
-                    <option value="Bharadwaj Mandal">Bharadwaj Mandal</option>
-                    <option value="Vashishta Mandal">Vashishta Mandal</option>
-                    <option value="Atrey Mandal">Atrey Mandal</option>
-                    <option value="Gautam Mandal">Gautam Mandal</option>
-                    <option value="Jamdagni Mandal">Jamdagni Mandal</option>
-                    <option value="Kashyap Mandal">Kashyap Mandal</option>
-                    <option value="Vishwamitra Mandal">Vishwamitra Mandal</option>
-                  </select>
-                </FormField>
-              </div>
-
-
-
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                type="submit"
-                className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg hover:shadow-xl relative overflow-hidden group"
-              >
-                <span className="relative z-10 flex items-center justify-center gap-2">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                  Register Now
-                </span>
-                <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 transform -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
-              </motion.button>
-
-              <AnimatePresence>
-                {showSuccess && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-3"
-                  >
-                    <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
-                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                      </svg>
-                    </div>
-                    <p className="text-green-800">Registration successful!</p>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          </motion.form>
-
-          {/* Registrations List */}
-          <motion.div
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.5 }}
-            className="bg-white rounded-2xl p-5 md:p-8 shadow-2xl border-t-4 border-indigo-600"
-          >
-            
-
-            {registrations.length === 0 ? (
-              <div className="text-center py-16">
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: "spring", stiffness: 200 }}
-                  className="w-24 h-24 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full mx-auto mb-4 flex items-center justify-center border-4 border-blue-200"
+              {/* Sport Dropdown Selection */}
+              <div className="mb-6">
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                  Select Sport <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={selectedSport}
+                  onChange={handleSportChange}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
                 >
-                  <svg className="w-12 h-12 text-blue-600" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
-                  </svg>
-                </motion.div>
-                <h3 className="text-foreground mb-2">Ready to Start!</h3>
-                <p className="text-muted-foreground">Register your first participant to begin</p>
-              </div>
-            ) : (
-              <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
-                <AnimatePresence mode="popLayout">
-                  {registrations.map((reg, index) => (
-                    <motion.div
-                      key={`${reg.id}-${reg.timestamp}`}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: 20 }}
-                      layout
-                      className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border-l-4 border-blue-600 hover:border-blue-700 hover:shadow-lg transition-all group"
-                    >
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="flex items-start gap-3">
-                          <div className="bg-blue-600 text-white rounded-full p-2 mt-1">
-                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                              <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
-                            </svg>
-                          </div>
-                          <div>
-                            <h3 className="text-foreground mb-1">{reg.name}</h3>
-                            <p className="text-sm text-muted-foreground">ID: {reg.id}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="px-4 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-full text-sm font-medium shadow-md">
-                            {reg.sport}
-                          </span>
-                          <button
-                            onClick={() => deleteRegistration(index)}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-700"
-                            title="Delete registration"
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <DetailRow label="Course" value={reg.course} />
-                        <DetailRow label="Semester" value={reg.semester} />
-                        <DetailRow label="Email" value={reg.email} />
-                        <DetailRow label="Phone" value={reg.phone} />
-                        <DetailRow label="Mandal" value={reg.mandal} />
-                        <DetailRow label="TXN ID" value={reg.transactionId} />
-                        <div className="col-span-2 mt-2 pt-2 border-t border-blue-100/50">
-                          <DetailRow label="Registered" value={reg.timestamp} />
-                        </div>
-                      </div>
-                    </motion.div>
+                  <option value="">-- Choose Sport --</option>
+                  {Object.values(SPORTS_CONFIG).map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.emoji} {s.name} ({s.mainPlayers} Player{s.mainPlayers > 1 ? "s" : ""})
+                    </option>
                   ))}
-                </AnimatePresence>
+                </select>
               </div>
-            )}
-          </motion.div>
-        </div>
+
+              {/* Dynamic Player Cards */}
+              {selectedSport && (
+                <div className="space-y-4 mb-6">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <Users className="w-4 h-4 text-blue-600" />
+                      Player Details ({slots.length} Slots)
+                    </h3>
+                    <span className="text-xs text-blue-600 font-semibold bg-blue-50 px-2.5 py-1 rounded-full border border-blue-100">
+                      {sport?.mainPlayers} Main {sport?.substitutes ? `+ ${sport.substitutes} Subs` : ""}
+                    </span>
+                  </div>
+
+                  {slots.map((slot) => (
+                    <PlayerCard
+                      key={slot.index}
+                      slot={slot}
+                      onFieldChange={handleFieldChange}
+                      onToggleCaptain={handleToggleCaptain}
+                      onToggleCollapse={handleToggleCollapse}
+                      isCaptainSelectionAllowed={Boolean(isTeamOrDoubles)}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* Continue to Preview Button */}
+              <motion.button
+                whileHover={{ scale: selectedSport ? 1.01 : 1 }}
+                whileTap={{ scale: selectedSport ? 0.99 : 1 }}
+                type="submit"
+                disabled={!isFormValid}
+                className={`w-full py-4 rounded-xl font-bold text-base transition-all shadow-lg flex items-center justify-center gap-2 ${
+                  isFormValid
+                    ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 shadow-blue-500/25 cursor-pointer"
+                    : "bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300"
+                }`}
+              >
+                <Eye className="w-5 h-5" />
+                Preview Registration
+              </motion.button>
+            </motion.form>
+          )}
+
+          {/* ── MODE 2: PREVIEW PAGE ── */}
+          {viewMode === "preview" && sport && (
+            <motion.div
+              key="preview-view"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              className="bg-white rounded-2xl p-5 md:p-8 shadow-2xl border-t-4 border-indigo-600 space-y-6"
+            >
+              {/* Preview Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div className="bg-indigo-600 text-white rounded-full p-2.5">
+                    <Eye className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-800">Registration Preview</h2>
+                    <p className="text-xs text-slate-500">Please review all player details carefully before final submission</p>
+                  </div>
+                </div>
+                <span className="bg-amber-100 text-amber-900 text-xs font-bold px-3 py-1.5 rounded-full">
+                  {sport.emoji} {sport.name}
+                </span>
+              </div>
+
+              {/* Captain Summary Highlight */}
+              {captain && captain.fullName && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3">
+                  <div className="w-10 h-10 bg-amber-400 rounded-full flex items-center justify-center flex-shrink-0">
+                    <Crown className="w-5 h-5 text-slate-900" />
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-bold text-amber-800 uppercase tracking-wider">Team Captain / Primary Participant</p>
+                    <p className="text-base font-extrabold text-slate-900">{captain.fullName}</p>
+                    <p className="text-xs text-slate-600">{captain.course} · Sem {captain.semester} · {captain.mandal} · Ph: {captain.phone}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Roster Details List */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                  <Users className="w-4 h-4 text-blue-600" />
+                  Main Roster ({mainPlayers.length} Players)
+                </h3>
+                <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-slate-50/50">
+                  {mainPlayers.map((p) => (
+                    <div key={p.index} className="p-3.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-2.5">
+                        <span className={`px-2 py-0.5 rounded font-bold ${
+                          p.isCaptain ? "bg-amber-400 text-slate-900" : "bg-blue-100 text-blue-800"
+                        }`}>
+                          {p.role}{p.isCaptain ? " 👑" : ""}
+                        </span>
+                        <span className="font-extrabold text-slate-900 text-sm">{p.fullName}</span>
+                        <span className="text-slate-500">({p.scholarNo})</span>
+                      </div>
+                      <div className="text-slate-600 font-medium">
+                        {p.course} (Sem {p.semester}) · {p.mandal} · {p.phone}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Substitutes Preview List */}
+              {subPlayers.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                    <Shield className="w-4 h-4 text-orange-500" />
+                    Substitutes ({subPlayers.length} Registered)
+                  </h3>
+                  <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-orange-50/30">
+                    {subPlayers.map((p) => (
+                      <div key={p.index} className="p-3.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-2.5">
+                          <span className="px-2 py-0.5 rounded font-bold bg-orange-100 text-orange-800">
+                            {p.role}
+                          </span>
+                          <span className="font-extrabold text-slate-900 text-sm">{p.fullName}</span>
+                          <span className="text-slate-500">({p.scholarNo})</span>
+                        </div>
+                        <div className="text-slate-600 font-medium">
+                          {p.course} (Sem {p.semester}) · {p.mandal} · {p.phone}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Preview Action Buttons */}
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("form")}
+                  className="flex-1 py-3.5 px-5 rounded-xl border-2 border-slate-200 text-slate-700 font-bold hover:bg-slate-50 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <ArrowLeft className="w-4 h-4" /> Edit Details
+                </button>
+                <button
+                  type="button"
+                  onClick={handleFinalSubmit}
+                  className="flex-1 py-3.5 px-5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold hover:from-emerald-700 hover:to-teal-700 shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <CheckCircle className="w-5 h-5" /> Confirm & Submit Registration
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ── MODE 3: SUCCESS / CONFIRMATION ── */}
+          {viewMode === "success" && sport && (
+            <motion.div
+              key="success-view"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-white rounded-2xl p-6 md:p-10 shadow-2xl border-t-4 border-emerald-500 text-center space-y-6"
+            >
+              <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto text-emerald-600">
+                <CheckCircle className="w-12 h-12" />
+              </div>
+
+              <div>
+                <h2 className="text-2xl md:text-3xl font-extrabold text-slate-900 mb-1">
+                  Registration Submitted Successfully! 🎉
+                </h2>
+                <p className="text-slate-600 text-sm">
+                  Your registration for <span className="font-bold text-blue-600">{sport.emoji} {sport.name}</span> has been confirmed.
+                </p>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 max-w-sm mx-auto">
+                <p className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-1">Registration ID</p>
+                <p className="text-2xl font-mono font-black text-blue-700">{submittedTeamId}</p>
+                <p className="text-[11px] text-slate-400 mt-1">Date: {submittedTime}</p>
+              </div>
+
+              <div className="pt-2 max-w-sm mx-auto">
+                <button
+                  type="button"
+                  onClick={handleRegisterAnother}
+                  className="w-full py-4 px-6 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-bold text-base flex items-center justify-center gap-2.5 transition-all cursor-pointer shadow-lg shadow-blue-500/25"
+                >
+                  <RotateCcw className="w-5 h-5" /> Register Another Participant
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
-    </div>
-  );
-}
 
-function SportIcon({ children }: { children: React.ReactNode }) {
-  return (
-    <motion.div
-      whileHover={{ scale: 1.2, rotate: 5 }}
-      className="bg-white/20 backdrop-blur-sm rounded-full p-3 text-white border-2 border-white/30"
-    >
-      {children}
-    </motion.div>
-  );
-}
-
-function FormField({
-  label,
-  error,
-  required,
-  children,
-}: {
-  label: string;
-  error?: string;
-  required?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <label className="block mb-2 text-foreground">
-        {label}
-        {required && <span className="text-red-500 ml-1">*</span>}
-      </label>
-      {children}
-      {error && (
-        <motion.p
-          initial={{ opacity: 0, y: -5 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-red-500 text-sm mt-1"
-        >
-          {error}
-        </motion.p>
-      )}
-    </div>
-  );
-}
-
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between items-center">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="text-foreground">{value}</span>
+      {/* Floating Scroll to Top Arrow Button in Bottom Right Corner */}
+      <motion.button
+        type="button"
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1 }}
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.9 }}
+        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+        className="fixed bottom-6 right-6 z-50 p-3.5 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 rounded-full shadow-2xl shadow-amber-500/40 border-2 border-amber-200 hover:from-amber-500 hover:to-yellow-500 transition-all cursor-pointer flex items-center justify-center font-bold"
+        title="Scroll to Top"
+      >
+        <ArrowUp className="w-6 h-6 stroke-[2.5]" />
+      </motion.button>
     </div>
   );
 }

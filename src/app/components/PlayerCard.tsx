@@ -1,199 +1,306 @@
 import React from "react";
-import { motion } from "motion/react";
-import { PlayerSlot } from "../types";
-import { Crown, User, CheckCircle2, AlertTriangle, Loader2, Sparkles } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import { PlayerSlot, COURSES, SEMESTERS, MANDALS } from "../types";
+import { Crown, User, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, Shield } from "lucide-react";
 
 interface PlayerCardProps {
   slot: PlayerSlot;
-  onScholarChange: (index: number, scholarNo: string) => void;
-  onFieldChange: (index: number, field: keyof PlayerSlot, value: string) => void;
+  onFieldChange: (index: number, field: keyof PlayerSlot, value: string | boolean) => void;
+  onToggleCaptain: (index: number) => void;
+  onToggleCollapse: (index: number) => void;
+  isCaptainSelectionAllowed: boolean;
 }
 
 export const PlayerCard: React.FC<PlayerCardProps> = ({
   slot,
-  onScholarChange,
   onFieldChange,
+  onToggleCaptain,
+  onToggleCollapse,
+  isCaptainSelectionAllowed,
 }) => {
   const isCaptain = slot.isCaptain;
-  const isError = Boolean(slot.errorMsg);
+  const isError = Object.keys(slot.errors).length > 0;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 15 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      transition={{ duration: 0.3, delay: slot.index * 0.04 }}
-      className={`rounded-2xl p-5 border transition-all duration-300 relative overflow-hidden ${
-        isError
-          ? "bg-red-50/90 border-red-400 shadow-lg shadow-red-500/10"
-          : isCaptain
-          ? "bg-gradient-to-r from-amber-500/10 via-white to-amber-500/5 border-amber-400/80 shadow-md shadow-amber-500/10"
+    <div
+      className={`rounded-xl border transition-all duration-200 overflow-hidden ${
+        isCaptain
+          ? "bg-amber-50/80 border-amber-300"
           : slot.isSubstitute
-          ? slot.isOptional
-            ? "bg-slate-50/80 border-slate-200"
-            : "bg-orange-50/50 border-orange-200"
-          : "bg-white border-blue-100 shadow-sm hover:shadow-md"
+          ? "bg-slate-50/90 border-slate-200"
+          : slot.isComplete
+          ? "bg-emerald-50/50 border-emerald-200"
+          : isError
+          ? "bg-red-50/50 border-red-200"
+          : "bg-slate-50/60 border-slate-200"
       }`}
     >
-      {/* Role Header & Status Badges */}
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-4 pb-3 border-b border-slate-100">
+      {/* Card Header / Toggle Bar */}
+      <button
+        type="button"
+        onClick={() => onToggleCollapse(slot.index)}
+        className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-black/5 transition-colors focus:outline-none"
+      >
         <div className="flex items-center gap-2">
           <span
-            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-extrabold uppercase tracking-wider ${
+            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-xs font-bold ${
               isCaptain
-                ? "bg-amber-400 text-slate-900 shadow-sm"
+                ? "bg-amber-400 text-slate-900"
                 : slot.isSubstitute
                 ? slot.isOptional
-                  ? "bg-slate-200 text-slate-700"
+                  ? "bg-slate-200 text-slate-600"
                   : "bg-orange-100 text-orange-800"
                 : "bg-blue-100 text-blue-800"
             }`}
           >
-            {isCaptain ? (
-              <Crown className="w-3.5 h-3.5 fill-current" />
+            {slot.isSubstitute ? (
+              <Shield className="w-3 h-3" />
+            ) : isCaptain ? (
+              <Crown className="w-3 h-3" />
             ) : (
-              <User className="w-3.5 h-3.5" />
+              <User className="w-3 h-3" />
             )}
             {slot.role}
           </span>
+
+          {slot.fullName && (
+            <span className="text-sm font-semibold text-slate-800 truncate max-w-[180px]">
+              {slot.fullName}
+            </span>
+          )}
+
           {isCaptain && (
-            <span className="text-[11px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full flex items-center gap-1">
-              <Sparkles className="w-3 h-3" /> Team Leader
+            <span className="text-[10px] font-bold bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded">
+              Captain
             </span>
           )}
         </div>
 
-        {/* Fetch Status Badge */}
-        <div className="flex items-center gap-1.5 text-xs font-semibold">
-          {slot.fetchStatus === "loading" && (
-            <span className="text-blue-600 flex items-center gap-1 animate-pulse">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Fetching info...
+        <div className="flex items-center gap-2">
+          {slot.isComplete && (
+            <span className="text-emerald-600 text-xs font-semibold flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              Completed
             </span>
           )}
-          {slot.fetchStatus === "success" && (
-            <span className="text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> Auto-Fetched
-            </span>
-          )}
-          {slot.fetchStatus === "error" && (
-            <span className="text-red-600 flex items-center gap-1">
-              <AlertTriangle className="w-3.5 h-3.5" /> Auto-Generated
-            </span>
-          )}
-          {slot.fetchStatus === "idle" && (
-            <span className="text-slate-400 text-[11px]">
-              {slot.isOptional ? "Optional Slot" : "Required"}
-            </span>
+          {slot.isCollapsed ? (
+            <ChevronDown className="w-4 h-4 text-slate-400" />
+          ) : (
+            <ChevronUp className="w-4 h-4 text-slate-400" />
           )}
         </div>
-      </div>
+      </button>
 
-      {/* Input Fields Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
-        {/* Scholar Number (Primary trigger for auto-fetch) */}
-        <div>
-          <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
-            Scholar ID {!slot.isOptional && <span className="text-red-500">*</span>}
-          </label>
-          <input
-            type="text"
-            value={slot.scholarNo}
-            onChange={(e) => onScholarChange(slot.index, e.target.value)}
-            placeholder="e.g., 2424001"
-            className={`w-full px-3.5 py-2.5 rounded-xl border text-sm font-semibold transition-all focus:outline-none focus:ring-2 ${
-              isError
-                ? "border-red-300 bg-white focus:ring-red-400"
-                : "border-slate-200 bg-slate-50/50 focus:bg-white focus:ring-blue-500"
-            }`}
-          />
-        </div>
+      {/* Card Content */}
+      <AnimatePresence initial={false}>
+        {!slot.isCollapsed && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="px-4 pb-4 pt-1 space-y-3 border-t border-slate-200/60"
+          >
+            {/* Captain selection toggle */}
+            {!slot.isSubstitute && isCaptainSelectionAllowed && (
+              <div className="flex items-center justify-between bg-white px-3 py-2 rounded-lg border border-slate-200">
+                <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                  <Crown className="w-3.5 h-3.5 text-amber-500" /> Make this player Team Captain
+                </span>
+                <input
+                  type="checkbox"
+                  checked={isCaptain}
+                  onChange={() => onToggleCaptain(slot.index)}
+                  className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                />
+              </div>
+            )}
 
-        {/* Full Name */}
-        <div>
-          <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
-            Full Name
-          </label>
-          <input
-            type="text"
-            value={slot.fullName}
-            onChange={(e) => onFieldChange(slot.index, "fullName", e.target.value)}
-            placeholder="Auto-fetched name"
-            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-100/70 text-sm font-semibold text-slate-800"
-            readOnly
-          />
-        </div>
+            {/* Inputs Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Full Name */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Full Name {!slot.isOptional && <span className="text-red-500">*</span>}
+                </label>
+                <input
+                  type="text"
+                  value={slot.fullName}
+                  onChange={(e) => onFieldChange(slot.index, "fullName", e.target.value)}
+                  placeholder="Enter full name"
+                  className={`w-full px-3 py-2 bg-white rounded-lg border text-sm text-slate-900 focus:outline-none focus:ring-2 ${
+                    slot.errors.fullName
+                      ? "border-red-400 focus:ring-red-400"
+                      : "border-slate-200 focus:ring-blue-500"
+                  }`}
+                />
+                {slot.errors.fullName && (
+                  <p className="text-red-500 text-[11px] mt-1">{slot.errors.fullName}</p>
+                )}
+              </div>
 
-        {/* Course */}
-        <div>
-          <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
-            Course
-          </label>
-          <input
-            type="text"
-            value={slot.course}
-            onChange={(e) => onFieldChange(slot.index, "course", e.target.value)}
-            placeholder="Auto-fetched course"
-            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-100/70 text-sm font-semibold text-slate-800"
-            readOnly
-          />
-        </div>
+              {/* Scholar ID */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Scholar ID {!slot.isOptional && <span className="text-red-500">*</span>}
+                </label>
+                <input
+                  type="text"
+                  value={slot.scholarNo}
+                  onChange={(e) => onFieldChange(slot.index, "scholarNo", e.target.value)}
+                  placeholder="e.g., 2424001"
+                  className={`w-full px-3 py-2 bg-white rounded-lg border text-sm text-slate-900 focus:outline-none focus:ring-2 ${
+                    slot.errors.scholarNo
+                      ? "border-red-400 focus:ring-red-400"
+                      : "border-slate-200 focus:ring-blue-500"
+                  }`}
+                />
+                {slot.errors.scholarNo && (
+                  <p className="text-red-500 text-[11px] mt-1">{slot.errors.scholarNo}</p>
+                )}
+              </div>
 
-        {/* Semester */}
-        <div>
-          <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
-            Semester
-          </label>
-          <input
-            type="text"
-            value={slot.semester}
-            onChange={(e) => onFieldChange(slot.index, "semester", e.target.value)}
-            placeholder="Auto-fetched semester"
-            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-100/70 text-sm font-semibold text-slate-800"
-            readOnly
-          />
-        </div>
+              {/* Course */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Course {!slot.isOptional && <span className="text-red-500">*</span>}
+                </label>
+                <select
+                  value={slot.course}
+                  onChange={(e) => onFieldChange(slot.index, "course", e.target.value)}
+                  className={`w-full px-3 py-2 bg-white rounded-lg border text-sm text-slate-900 focus:outline-none focus:ring-2 ${
+                    slot.errors.course
+                      ? "border-red-400 focus:ring-red-400"
+                      : "border-slate-200 focus:ring-blue-500"
+                  }`}
+                >
+                  <option value="">Select course</option>
+                  {COURSES.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+                {slot.errors.course && (
+                  <p className="text-red-500 text-[11px] mt-1">{slot.errors.course}</p>
+                )}
+              </div>
 
-        {/* Phone Number */}
-        <div>
-          <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
-            Phone Number
-          </label>
-          <input
-            type="text"
-            value={slot.phone}
-            onChange={(e) => onFieldChange(slot.index, "phone", e.target.value)}
-            placeholder="Phone number"
-            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
+              {/* Semester */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Semester {!slot.isOptional && <span className="text-red-500">*</span>}
+                </label>
+                <select
+                  value={slot.semester}
+                  onChange={(e) => onFieldChange(slot.index, "semester", e.target.value)}
+                  className={`w-full px-3 py-2 bg-white rounded-lg border text-sm text-slate-900 focus:outline-none focus:ring-2 ${
+                    slot.errors.semester
+                      ? "border-red-400 focus:ring-red-400"
+                      : "border-slate-200 focus:ring-blue-500"
+                  }`}
+                >
+                  <option value="">Select semester</option>
+                  {SEMESTERS.map((s) => (
+                    <option key={s} value={s}>Semester {s}</option>
+                  ))}
+                </select>
+                {slot.errors.semester && (
+                  <p className="text-red-500 text-[11px] mt-1">{slot.errors.semester}</p>
+                )}
+              </div>
 
-        {/* Mandal */}
-        <div>
-          <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
-            Mandal
-          </label>
-          <input
-            type="text"
-            value={slot.mandal}
-            onChange={(e) => onFieldChange(slot.index, "mandal", e.target.value)}
-            placeholder="Auto-fetched mandal"
-            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-100/70 text-sm font-semibold text-slate-800"
-            readOnly
-          />
-        </div>
-      </div>
+              {/* Phone */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Phone Number {!slot.isOptional && <span className="text-red-500">*</span>}
+                </label>
+                <input
+                  type="tel"
+                  value={slot.phone}
+                  onChange={(e) => onFieldChange(slot.index, "phone", e.target.value)}
+                  placeholder="e.g., 9876543210"
+                  className={`w-full px-3 py-2 bg-white rounded-lg border text-sm text-slate-900 focus:outline-none focus:ring-2 ${
+                    slot.errors.phone
+                      ? "border-red-400 focus:ring-red-400"
+                      : "border-slate-200 focus:ring-blue-500"
+                  }`}
+                />
+                {slot.errors.phone && (
+                  <p className="text-red-500 text-[11px] mt-1">{slot.errors.phone}</p>
+                )}
+              </div>
 
-      {/* Validation Error Box */}
-      {isError && (
-        <motion.div
-          initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: "auto" }}
-          className="mt-3.5 p-3 rounded-xl bg-red-100/90 border border-red-300 text-red-800 text-xs font-bold flex items-start gap-2 animate-shake"
-        >
-          <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
-          <span>{slot.errorMsg}</span>
-        </motion.div>
-      )}
-    </motion.div>
+              {/* Email */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Email {!slot.isOptional && <span className="text-red-500">*</span>}
+                </label>
+                <input
+                  type="email"
+                  value={slot.email}
+                  onChange={(e) => onFieldChange(slot.index, "email", e.target.value)}
+                  placeholder="your.email@example.com"
+                  className={`w-full px-3 py-2 bg-white rounded-lg border text-sm text-slate-900 focus:outline-none focus:ring-2 ${
+                    slot.errors.email
+                      ? "border-red-400 focus:ring-red-400"
+                      : "border-slate-200 focus:ring-blue-500"
+                  }`}
+                />
+                {slot.errors.email && (
+                  <p className="text-red-500 text-[11px] mt-1">{slot.errors.email}</p>
+                )}
+              </div>
+
+              {/* Mandal */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Mandal {!slot.isOptional && <span className="text-red-500">*</span>}
+                </label>
+                <select
+                  value={slot.mandal}
+                  onChange={(e) => onFieldChange(slot.index, "mandal", e.target.value)}
+                  className={`w-full px-3 py-2 bg-white rounded-lg border text-sm text-slate-900 focus:outline-none focus:ring-2 ${
+                    slot.errors.mandal
+                      ? "border-red-400 focus:ring-red-400"
+                      : "border-slate-200 focus:ring-blue-500"
+                  }`}
+                >
+                  <option value="">Select Mandal</option>
+                  {MANDALS.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+                {slot.errors.mandal && (
+                  <p className="text-red-500 text-[11px] mt-1">{slot.errors.mandal}</p>
+                )}
+              </div>
+
+              {/* Gender */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Gender {!slot.isOptional && <span className="text-red-500">*</span>}
+                </label>
+                <select
+                  value={slot.gender}
+                  onChange={(e) => onFieldChange(slot.index, "gender", e.target.value)}
+                  className={`w-full px-3 py-2 bg-white rounded-lg border text-sm text-slate-900 focus:outline-none focus:ring-2 ${
+                    slot.errors.gender
+                      ? "border-red-400 focus:ring-red-400"
+                      : "border-slate-200 focus:ring-blue-500"
+                  }`}
+                >
+                  <option value="">Select Gender</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Other">Other</option>
+                </select>
+                {slot.errors.gender && (
+                  <p className="text-red-500 text-[11px] mt-1">{slot.errors.gender}</p>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 };
