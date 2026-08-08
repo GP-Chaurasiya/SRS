@@ -246,7 +246,7 @@ export default function App() {
 
     // Background Google Sheets Sync
     fetch(
-      "https://script.google.com/macros/s/AKfycbxPZZqbNlzCC2toxV2I39V3FYumEVStd5Cybgx35zr0RtBC-JChZVRts-RvQT-AKwYp/exec",
+      "https://script.google.com/macros/s/AKfycbzXd-FEqMi2o0sVtcfvlnV4rN2OavN_dxWjQlLWzjKmU5tkyLMmtJeZK9ahkFQ3H1Qu/exec",
       {
         method: "POST",
         mode: "no-cors",
