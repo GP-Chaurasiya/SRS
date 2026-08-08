@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import confetti from "canvas-confetti";
 import * as XLSX from "xlsx";
@@ -10,7 +10,7 @@ import { SPORTS_CONFIG } from "./sportsConfig";
 import { PlayerSlot } from "./types";
 import {
   Trophy, CheckCircle, Download, Users, ArrowLeft, ArrowRight, ArrowUp,
-  Printer, RotateCcw, Eye, Crown, Shield, User,
+  Printer, RotateCcw, Eye, Crown, Shield, User, Lock, AlertTriangle, Clock,
 } from "lucide-react";
 
 // ─── Build player slots for a selected sport ─────────────────────────
@@ -158,8 +158,62 @@ export default function App() {
     );
   }, []);
 
+
+  const [regSettings, setRegSettings] = useState<{
+    masterEnabled: boolean;
+    sportsConfig: Record<string, { enabled?: boolean; startDate?: string; endDate?: string }>;
+  }>({
+    masterEnabled: true,
+    sportsConfig: {},
+  });
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const res = await fetch("/api/settings/registration");
+        if (res.ok) {
+          const data = await res.json();
+          setRegSettings(data);
+        }
+      } catch (err) {
+        console.warn("Could not fetch registration settings:", err);
+      }
+    };
+    fetchSettings();
+    const interval = setInterval(fetchSettings, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const getSportRegStatus = useCallback((sportId: string) => {
+    const cfg = regSettings.sportsConfig?.[sportId];
+    if (cfg?.enabled === false) {
+      return { status: "disabled", message: "Registration for this sport is disabled." };
+    }
+    const now = new Date();
+    if (cfg?.startDate && new Date(cfg.startDate) > now) {
+      const formatted = new Date(cfg.startDate).toLocaleString("en-IN", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+      return { status: "upcoming", message: `Registration for this sport opens on ${formatted}.` };
+    }
+    if (cfg?.endDate && new Date(cfg.endDate) < now) {
+      const formatted = new Date(cfg.endDate).toLocaleString("en-IN", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+      return { status: "closed", message: `Registration for this sport closed on ${formatted}.` };
+    }
+    return { status: "open", message: "" };
+  }, [regSettings]);
+
+  const currentSportRegStatus = useMemo(() => {
+    return selectedSport ? getSportRegStatus(selectedSport) : { status: "open", message: "" };
+  }, [selectedSport, getSportRegStatus]);
+
   // ── Validation check ────────────────────────────────────────────────
   const isFormValid = useMemo(() => {
+    if (currentSportRegStatus.status !== "open") return false;
     if (!sport || slots.length === 0) return false;
 
     const mainSlots = slots.filter((s) => !s.isSubstitute);
@@ -169,7 +223,7 @@ export default function App() {
     const subsValid = requiredSubSlots.every((s) => checkComplete(s, slots));
 
     return mainValid && subsValid;
-  }, [sport, slots]);
+  }, [sport, slots, currentSportRegStatus]);
 
   // ── Go to Preview ───────────────────────────────────────────────────
   const handleGoToPreview = (e: React.FormEvent) => {
@@ -307,8 +361,28 @@ export default function App() {
         </div>
 
         <AnimatePresence mode="wait">
-          {/* ── MODE 1: FORM FILLING ── */}
-          {viewMode === "form" && (
+          {regSettings.masterEnabled === false ? (
+            <motion.div
+              key="closed-view"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-white/95 backdrop-blur-md rounded-2xl p-6 md:p-10 shadow-2xl border-t-4 border-red-500 text-center space-y-5"
+            >
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto text-red-600">
+                <Lock className="w-8 h-8" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-extrabold text-slate-900">Registration Currently Closed</h2>
+                <p className="text-slate-600 text-sm mt-1 max-w-md mx-auto">
+                  Team registration for Dev Sanskriti Sports Premier League (DSSPL 2026) is currently closed by the Organising Committee.
+                </p>
+              </div>
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 max-w-sm mx-auto text-xs text-slate-600">
+                <p className="font-bold text-slate-800 mb-1">Have questions or queries?</p>
+                <p>Please contact the DSSPL Organising Team for schedule announcements and support.</p>
+              </div>
+            </motion.div>
+          ) : viewMode === "form" && (
             <motion.form
               key="form-view"
               initial={{ opacity: 0, y: 15 }}
@@ -339,13 +413,38 @@ export default function App() {
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
                 >
                   <option value="">-- Choose Sport --</option>
-                  {Object.values(SPORTS_CONFIG).map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.emoji} {s.name} ({s.mainPlayers} Player{s.mainPlayers > 1 ? "s" : ""})
-                    </option>
-                  ))}
+                  {Object.values(SPORTS_CONFIG).map((s) => {
+                    const statusObj = getSportRegStatus(s.id);
+                    let statusTag = "";
+                    if (statusObj.status === "disabled") statusTag = " (Disabled)";
+                    else if (statusObj.status === "upcoming") statusTag = " (Upcoming)";
+                    else if (statusObj.status === "closed") statusTag = " (Registration Closed)";
+
+                    return (
+                      <option key={s.id} value={s.id}>
+                        {s.emoji} {s.name} ({s.mainPlayers} Player{s.mainPlayers > 1 ? "s" : ""}){statusTag}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
+
+              {/* Sport Registration Status Banner */}
+              {selectedSport && currentSportRegStatus.status !== "open" && (
+                <div className={`p-4 rounded-xl mb-6 flex items-start gap-3 border ${
+                  currentSportRegStatus.status === "upcoming"
+                    ? "bg-amber-50 border-amber-200 text-amber-900"
+                    : "bg-red-50 border-red-200 text-red-900"
+                }`}>
+                  <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-bold text-sm">
+                      {currentSportRegStatus.status === "upcoming" ? "Registration Not Started Yet" : "Registration Closed"}
+                    </p>
+                    <p className="text-xs mt-0.5">{currentSportRegStatus.message}</p>
+                  </div>
+                </div>
+              )}
 
               {/* Dynamic Player Cards */}
               {selectedSport && (
