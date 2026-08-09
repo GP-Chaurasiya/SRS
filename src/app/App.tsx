@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import confetti from "canvas-confetti";
 import * as XLSX from "xlsx";
 import dsvvLogo from "../imports/DSVV_Logo_English.png";
-import dssplLogoImage from "../imports/WhatsApp_Image_2026-04-23_at_3.27.56_PM-removebg-preview.png";
+import dsslLogoImage from "../imports/WhatsApp_Image_2026-04-23_at_3.27.56_PM-removebg-preview.png";
 import { ImageWithFallback } from "./components/figma/ImageWithFallback";
 import { PlayerCard } from "./components/PlayerCard";
 import { SPORTS_CONFIG } from "./sportsConfig";
@@ -323,7 +323,7 @@ export default function App() {
               <ImageWithFallback src={dsvvLogo} alt="DSVV Logo" className="h-10 md:h-12 object-contain" />
             </motion.div>
             <motion.div initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="flex items-center">
-              <ImageWithFallback src={dssplLogoImage} alt="DSSPL Logo" className="h-14 md:h-16 object-contain" />
+              <ImageWithFallback src={dsslLogoImage} alt="DSSL Logo" className="h-14 md:h-16 object-contain" />
             </motion.div>
           </div>
         </div>
