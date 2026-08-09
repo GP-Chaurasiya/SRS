@@ -23,7 +23,7 @@ function buildSlots(sportId: string): PlayerSlot[] {
   for (let i = 0; i < sport.mainPlayers; i++) {
     slots.push({
       index: i,
-      role: sport.mainPlayers === 1 ? "Player 1 (Primary)" : `Player ${i + 1}`,
+      role: sport.mainPlayers === 1 ? "Captain" : i === 0 ? "Captain" : "Member",
       isCaptain: i === 0 && sport.type !== "individual",
       isSubstitute: false,
       isOptional: false,
@@ -38,7 +38,7 @@ function buildSlots(sportId: string): PlayerSlot[] {
     for (let j = 0; j < sport.substitutes; j++) {
       slots.push({
         index: sport.mainPlayers + j,
-        role: `Substitute ${j + 1}`,
+        role: "Member",
         isCaptain: false,
         isSubstitute: true,
         isOptional: j > 0, // Sub 1 is mandatory, others optional
