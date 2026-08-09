@@ -245,30 +245,33 @@ export default function App() {
     confetti({ particleCount: 150, spread: 90, origin: { y: 0.5 } });
 
     // Background Google Sheets Sync
-    fetch(
-      "https://script.google.com/macros/s/AKfycbzEzsQmK0JDeIvjujpWnAFBXfyj8yko-7u2DvdmilpAdD0yzOCcVEFZPfW1ljpbUe1L/exec",
-      {
-        method: "POST",
-        mode: "no-cors",
-        body: JSON.stringify({
-          teamId,
-          sport: sport.name,
-          timestamp,
-          players: slots.map((s) => ({
-            role: s.role,
-            fullName: s.fullName,
-            scholarNo: s.scholarNo,
-            course: s.course,
-            semester: s.semester,
-            phone: s.phone,
-            email: s.email,
-            mandal: s.mandal,
-            gender: s.gender,
-            isCaptain: s.isCaptain,
-          })),
-        }),
-      }
-    ).catch((err) => console.error("Background sync error:", err));
+    // NOTE: Google Apps Script requires GET requests with URL-encoded params when using
+    // mode:"no-cors" from a browser. JSON POST bodies are silently ignored by GAS.
+    const payload = encodeURIComponent(
+      JSON.stringify({
+        teamId,
+        sport: sport.name,
+        timestamp,
+        players: slots.map((s) => ({
+          role: s.role,
+          fullName: s.fullName,
+          scholarNo: s.scholarNo,
+          course: s.course,
+          semester: s.semester,
+          phone: s.phone,
+          email: s.email,
+          mandal: s.mandal,
+          gender: s.gender,
+          isCaptain: s.isCaptain,
+        })),
+      })
+    );
+    const scriptUrl =
+      "https://script.google.com/macros/s/AKfycbzEzsQmK0JDeIvjujpWnAFBXfyj8yko-7u2DvdmilpAdD0yzOCcVEFZPfW1ljpbUe1L/exec";
+    fetch(`${scriptUrl}?data=${payload}`, {
+      method: "GET",
+      mode: "no-cors",
+    }).catch((err) => console.error("Background sync error:", err));
   };
 
   // ── Export Excel ────────────────────────────────────────────────────
