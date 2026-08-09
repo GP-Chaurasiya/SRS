@@ -267,7 +267,7 @@ export default function App() {
       })
     );
     const scriptUrl =
-      "https://script.google.com/macros/s/AKfycbxFU4J0fHUhEyhrzfs96BoosJdNe-UwsOX8ar9f54Wc89S_RFZVLyHDx4AC0GRbjIzr/exec";
+      "https://script.google.com/macros/s/AKfycbzZ3B2z_XTE2puNlINjiSrjCtHi8KiNuv95ZvC6FARXgvg0dsJ-ka3QLmP-UGKGSeWmJQ/exec";
     fetch(`${scriptUrl}?data=${payload}`, {
       method: "GET",
       mode: "no-cors",
