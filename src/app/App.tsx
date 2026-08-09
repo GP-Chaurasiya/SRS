@@ -102,7 +102,7 @@ function generateTeamId(sportId: string): string {
   const sport = SPORTS_CONFIG[sportId];
   const code = sport?.name.replace(/[^A-Z]/gi, "").slice(0, 3).toUpperCase() || "SPT";
   const num = String(Math.floor(Math.random() * 90000) + 10000);
-  return `DSSPL-2026-${code}-${num}`;
+  return `DSSL-2026-${code}-${num}`;
 }
 
 export default function App() {
@@ -298,7 +298,7 @@ export default function App() {
     const worksheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Registration");
-    XLSX.writeFile(workbook, `DSSPL_Registration_${submittedTeamId}.xlsx`);
+    XLSX.writeFile(workbook, `DSSL_Registration_${submittedTeamId}.xlsx`);
   };
 
   // ── Reset ───────────────────────────────────────────────────────────
@@ -351,7 +351,7 @@ export default function App() {
             transition={{ delay: 0.2 }}
             className="text-white mb-1.5 drop-shadow-lg text-xl md:text-3xl font-bold text-balance"
           >
-            DEV SANSKRITI SPORTS PREMIER LEAGUE
+            DEV SANSKRITI SPORTS LEAGUE
           </motion.h1>
           <motion.p
             initial={{ y: -20, opacity: 0 }}
@@ -377,12 +377,12 @@ export default function App() {
               <div>
                 <h2 className="text-2xl font-extrabold text-slate-900">Registration Currently Closed</h2>
                 <p className="text-slate-600 text-sm mt-1 max-w-md mx-auto">
-                  Team registration for Dev Sanskriti Sports Premier League (DSSPL 2026) is currently closed by the Organising Committee.
+                  Team registration for Dev Sanskriti Sports League (DSSL 2026) is currently closed by the Organising Committee.
                 </p>
               </div>
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 max-w-sm mx-auto text-xs text-slate-600">
                 <p className="font-bold text-slate-800 mb-1">Have questions or queries?</p>
-                <p>Please contact the DSSPL Organising Team for schedule announcements and support.</p>
+                <p>Please contact the DSSL Organising Team for schedule announcements and support.</p>
               </div>
             </motion.div>
           ) : viewMode === "form" && (
